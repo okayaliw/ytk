@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Settings - YT-MarketCap{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Application Settings</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label for="api_key" class="form-label fw-semibold">YouTube Data API v3 Key</label>
+                        <input type="password" class="form-control" id="api_key" name="api_key" 
+                               value="{{ current_key or '' }}"
+                               placeholder="Enter your API key here...">
+                        <div class="form-text">
+                            The application will not function without a valid API key.
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Key</button>
+                </form>
+            </div>
+            {% if current_key %}
+            <div class="card-footer text-muted small">
+                An API key is currently saved. Entering a new one will overwrite it.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

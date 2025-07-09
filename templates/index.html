@@ -1,0 +1,274 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - YT-MarketCap{% endblock %}
+
+{% block content %}
+<!-- YÜKLEME EKRANI: Başlangıçta bu gösterilir -->
+<div id="loading-overlay" class="text-center p-5">
+    <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+    <p class="mt-3 text-muted">Loading dashboard data...</p>
+</div>
+
+<!-- ANA İÇERİK: Veri yüklendiğinde bu gösterilir -->
+<div id="dashboard-content" class="d-none">
+    <!-- Özet Paneli -->
+    <div class="row mb-4" id="summary-cards">
+        <!-- JS ile dolacak -->
+    </div>
+
+    <!-- Ana Grafikler -->
+    <div class="row mb-4">
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted fw-normal">Total Subscribers (Last 30 Days)</h6>
+                    <div style="height: 250px;"><canvas id="totalSubscribersChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 mb-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title text-muted fw-normal">Total Views (Last 30 Days)</h6>
+                    <div style="height: 250px;"><canvas id="totalViewsChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">Tracked Channels</h3>
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addChannelModal">
+            <i class="bi bi-plus-circle"></i> Add Channel
+        </button>
+    </div>
+
+    <!-- Kanal Tablosu -->
+    <div class="table-responsive bg-white rounded-3 shadow-sm">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr class="text-uppercase small text-muted">
+                    <th scope="col" style="width: 5%;" class="ps-4">#</th>
+                    <th scope="col">Channel</th>
+                    <th scope="col" class="text-end">Subscribers</th>
+                    <th scope="col" class="text-end">Total Views</th>
+                    <th scope="col" class="text-end">Total Videos</th>
+                    <th scope="col" style="width: 5%;"></th>
+                </tr>
+            </thead>
+            <tbody id="channel-table-body">
+                <!-- JS ile dolacak -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Channel Modal -->
+<div class="modal fade" id="addChannelModal" tabindex="-1" aria-labelledby="addChannelModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addChannelModalLabel">Add YouTube Channel</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addChannelForm">
+                    <div class="mb-3">
+                        <label for="channelQueryInput" class="form-label">Channel ID, @handle, or Name</label>
+                        <input type="text" class="form-control" id="channelQueryInput" placeholder="e.g., MrBeast or UC..." required>
+                    </div>
+                    <div id="form-error" class="alert alert-danger d-none" role="alert"></div>
+                    <button type="submit" class="btn btn-primary" id="addChannelSubmitButton">
+                        <span class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                        Add Channel
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const formatNumber = (num) => {
+        if (num === null || typeof num === 'undefined') return 'N/A';
+        if (num >= 1e9) return (num / 1e9).toFixed(2) + ' B';
+        if (num >= 1e6) return (num / 1e6).toFixed(2) + ' M';
+        if (num >= 1e3) return (num / 1e3).toFixed(1) + ' K';
+        return num.toLocaleString();
+    };
+    
+    const renderMainChart = (canvasId, labels, data, label, colorRGB) => {
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
+        if (!ctx) return;
+        const gradient = ctx.createLinearGradient(0, 0, 0, ctx.canvas.height);
+        gradient.addColorStop(0, `rgba(${colorRGB}, 0.2)`);
+        gradient.addColorStop(1, `rgba(${colorRGB}, 0)`);
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: data,
+                    borderColor: `rgb(${colorRGB})`,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: false, ticks: { callback: (value) => formatNumber(value) } },
+                    x: { grid: { display: false } }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.parsed.y.toLocaleString()}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    };
+
+    const fetchAndRenderDashboard = async () => {
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const dashboardContent = document.getElementById('dashboard-content');
+        
+        try {
+            const response = await fetch('/api/dashboard_data');
+            if (!response.ok) {
+                throw new Error(`API call failed with status ${response.status}`);
+            }
+            const data = await response.json();
+            const { summary, channels, summary_chart } = data;
+
+            // Özet Kartları
+            const subsChangeClass = summary.daily_subs_change >= 0 ? 'text-success' : 'text-danger';
+            const viewsChangeClass = summary.daily_views_change >= 0 ? 'text-success' : 'text-danger';
+            const subsSign = summary.daily_subs_change >= 0 ? '+' : '';
+            const viewsSign = summary.daily_views_change >= 0 ? '+' : '';
+            document.getElementById('summary-cards').innerHTML = `
+                <div class="col-md-3 mb-3"><div class="card stat-card"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted fw-normal">Total Subscribers</h6><h4 class="card-title">${formatNumber(summary.total_subs_today)}</h4><div class="change ${subsChangeClass}">${subsSign}${formatNumber(summary.daily_subs_change)} (${summary.percent_subs_change.toFixed(2)}%)</div></div></div></div>
+                <div class="col-md-3 mb-3"><div class="card stat-card"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted fw-normal">Total Views</h6><h4 class="card-title">${formatNumber(summary.total_views_today)}</h4><div class="change ${viewsChangeClass}">${viewsSign}${formatNumber(summary.daily_views_change)} (${summary.percent_views_change.toFixed(2)}%)</div></div></div></div>
+                <div class="col-md-3 mb-3"><div class="card stat-card"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted fw-normal">Total Videos</h6><h4 class="card-title">${summary.total_videos_today.toLocaleString()}</h4><div class="change text-muted"> </div></div></div></div>
+                <div class="col-md-3 mb-3"><div class="card stat-card"><div class="card-body"><h6 class="card-subtitle mb-2 text-muted fw-normal">Tracked Channels</h6><h4 class="card-title">${summary.total_channels}</h4><div class="change text-muted"> </div></div></div></div>
+            `;
+            
+            // Ana Grafikler
+            renderMainChart('totalSubscribersChart', summary_chart.labels, summary_chart.subscribers, 'Total Subscribers', '71, 85, 105');
+            renderMainChart('totalViewsChart', summary_chart.labels, summary_chart.views, 'Total Views', '220, 38, 38');
+
+            // Tablo
+            const tableBody = document.getElementById('channel-table-body');
+            tableBody.innerHTML = '';
+            channels.forEach((channel, index) => {
+                const subChange = channel.daily_sub_change;
+                const viewChange = channel.daily_view_change;
+                const row = `
+                    <tr>
+                        <td class="text-muted ps-4">${index + 1}</td>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <a href="/channel/${channel.id}"><img src="${channel.image_url}" class="rounded-circle me-3 censorable-image" width="40" height="40"></a>
+                                <div>
+                                    <a href="/channel/${channel.id}" class="text-decoration-none text-dark fw-bold censorable">${channel.name}</a>
+                                    <div class="text-muted small censorable">${channel.youtube_channel_id}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            <div class="fw-semibold">${formatNumber(channel.subscribers)}</div>
+                            <small class="${subChange >= 0 ? 'text-success' : 'text-danger'}">${subChange >= 0 ? '+' : ''}${subChange.toLocaleString()}</small>
+                        </td>
+                        <td class="text-end">
+                            <div class="fw-semibold">${formatNumber(channel.views)}</div>
+                            <small class="${viewChange >= 0 ? 'text-success' : 'text-danger'}">${viewChange >= 0 ? '+' : ''}${viewChange.toLocaleString()}</small>
+                        </td>
+                        <td class="text-end">${channel.videos.toLocaleString()}</td>
+                        <td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="deleteChannel(${channel.id}, '${channel.name}')"><i class="bi bi-trash"></i></button></td>
+                    </tr>
+                `;
+                tableBody.insertAdjacentHTML('beforeend', row);
+            });
+
+            loadingOverlay.classList.add('d-none');
+            dashboardContent.classList.remove('d-none');
+        } catch (e) {
+            loadingOverlay.innerHTML = `<div class="alert alert-danger">Failed to load dashboard data. Please check your API key and network connection.</div>`;
+            console.error("Dashboard Load Error:", e);
+        }
+    };
+    
+    // Add Channel Modal Logic
+    const addChannelForm = document.getElementById('addChannelForm');
+    if(addChannelForm) {
+        addChannelForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formError = document.getElementById('form-error');
+            const submitButton = document.getElementById('addChannelSubmitButton');
+            const queryInput = document.getElementById('channelQueryInput');
+            const query = queryInput.value.trim();
+            if (!query) return;
+
+            submitButton.disabled = true;
+            submitButton.querySelector('.spinner-border').classList.remove('d-none');
+            formError.classList.add('d-none');
+
+            try {
+                const response = await fetch('/api/channels', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel_query: query })
+                });
+                if (response.ok) {
+                    queryInput.value = '';
+                    bootstrap.Modal.getInstance(document.getElementById('addChannelModal')).hide();
+                    fetchAndRenderDashboard();
+                } else {
+                    const errorData = await response.json();
+                    formError.textContent = errorData.description || 'An unknown error occurred.';
+                    formError.classList.remove('d-none');
+                }
+            } catch (error) {
+                formError.textContent = 'A network error occurred. Please try again.';
+                formError.classList.remove('d-none');
+            } finally {
+                submitButton.disabled = false;
+                submitButton.querySelector('.spinner-border').classList.add('d-none');
+            }
+        });
+    }
+
+    window.deleteChannel = async (id, name) => {
+        if (!confirm(`Are you sure you want to delete '${name}'?`)) return;
+        try {
+            const response = await fetch(`/api/channels/${id}`, { method: 'DELETE' });
+            if (response.ok) {
+                fetchAndRenderDashboard();
+            } else {
+                alert('Failed to delete the channel.');
+            }
+        } catch (error) {
+            alert('A network error occurred while trying to delete the channel.');
+        }
+    };
+    
+    fetchAndRenderDashboard();
+});
+</script>
+{% endblock %}

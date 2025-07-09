@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+env/
+
+# Veritabanı ve Gizli Bilgiler
+instance/
+*.db
+*.sqlite3
+.env
