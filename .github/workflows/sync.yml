@@ -1,0 +1,33 @@
+# .github/workflows/sync.yml
+name: Daily Data Sync
+
+on:
+  schedule:
+    # Her gün UTC ile 02:00'de (Türkiye saati ile sabah 05:00) çalışır.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Bu, GitHub arayüzünden butona basarak manuel olarak çalıştırmanızı sağlar.
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11' # Kullandığınız Python versiyonuyla uyumlu olmalı
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run data sync script
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      run: python sync_data.py
