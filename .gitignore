@@ -7,7 +7,4 @@ venv/
 env/
 
 # Veritabanı ve Gizli Bilgiler
-instance/
-*.db
-*.sqlite3
 .env

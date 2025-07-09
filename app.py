@@ -8,32 +8,24 @@ from datetime import date, datetime, timedelta
 from flask import Flask, jsonify, render_template, request, abort, redirect, url_for, flash, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import desc, func
-from dotenv import load_dotenv
-
-# .env dosyasındaki ortam değişkenlerini yükle
-load_dotenv()
 
 # --- 1. Yapılandırma ---
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'a-default-secret-key-for-local-dev')
+app.config['SECRET_KEY'] = 'a-default-secret-key-for-local-dev'
 
-# Veritabanı bağlantısını ortam değişkeninden al
-DATABASE_URL = os.getenv('DATABASE_URL')
-if not DATABASE_URL:
-    # Eğer DATABASE_URL tanımlı değilse, yerel SQLite veritabanına geri dön
-    print("WARNING: DATABASE_URL not set. Falling back to local SQLite database.")
-    basedir = os.path.abspath(os.path.dirname(__file__))
-    instance_path = os.path.join(basedir, 'instance')
-    os.makedirs(instance_path, exist_ok=True)
-    DATABASE_URL = 'sqlite:///' + os.path.join(instance_path, 'app.db')
+# SQLite veritabanı yapılandırmasına geri dönüyoruz.
+# Bu, projenin kendi içinde bir veritabanı dosyası kullanmasını sağlar.
+basedir = os.path.abspath(os.path.dirname(__file__))
+instance_path = os.path.join(basedir, 'instance')
+os.makedirs(instance_path, exist_ok=True)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_path, 'app.db')
 
-app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/"
 
 # --- 2. Veritabanı Modelleri ---
+# Settings modeli artık API anahtarını doğrudan veritabanında tutacak
 class Settings(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True, default=1)
@@ -61,6 +53,7 @@ class ChannelStats(db.Model):
 # --- 3. Veritabanı ve İlk Kurulum ---
 @app.before_request
 def initial_setup():
+    # Bu fonksiyon, uygulama her çalıştığında veritabanı ve tabloların var olduğundan emin olur.
     with app.app_context():
         db.create_all()
         if Settings.query.first() is None:
@@ -69,6 +62,7 @@ def initial_setup():
 
 # --- 4. Yardımcı Fonksiyonlar ---
 def get_api_key():
+    # API anahtarını doğrudan veritabanından okur.
     settings = Settings.query.first()
     return settings.youtube_api_key if settings else None
 

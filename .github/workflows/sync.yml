@@ -6,13 +6,8 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
-# YENİ: Ortam değişkenlerini en üst seviyede tanımla
-env:
-  DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-
 jobs:
-  sync-data:
+  sync-and-commit:
     runs-on: ubuntu-latest
 
     steps:
@@ -25,11 +20,21 @@ jobs:
         python-version: '3.11'
 
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      run: pip install -r requirements.txt
 
     - name: Run data sync script
-      # Artık her adımda env tanımlamaya gerek yok, çünkü en üstte tanımlandı.
-      # Bu, değişkenlerin tüm job boyunca geçerli olmasını sağlar.
-      run: python sync_data.py
+      # YOUTUBE_API_KEY'i hala Secret'tan alıyoruz, bu güvenli.
+      env:
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+      run: |
+        # app.py'a API anahtarını bildirmek için geçici bir .env dosyası oluştur
+        echo "YOUTUBE_API_KEY=${YOUTUBE_API_KEY}" > .env
+        python sync_data.py
+
+    - name: Commit and push if it changed
+      # Bu bölüm, veritabanı dosyasında değişiklik varsa, bunu otomatik olarak commit eder.
+      run: |
+        git config --global user.name 'GitHub Actions Bot'
+        git config --global user.email 'actions@github.com'
+        git add instance/app.db
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Update database with daily stats" && git push)
