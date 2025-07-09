@@ -9,7 +9,6 @@ on:
 jobs:
   sync-and-commit:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -23,18 +22,22 @@ jobs:
       run: pip install -r requirements.txt
 
     - name: Run data sync script
-      # YOUTUBE_API_KEY'i hala Secret'tan alıyoruz, bu güvenli.
       env:
-        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-      run: |
-        # app.py'a API anahtarını bildirmek için geçici bir .env dosyası oluştur
-        echo "YOUTUBE_API_KEY=${YOUTUBE_API_KEY}" > .env
-        python sync_data.py
+        # Bu API anahtarı, sync_data.py'ın app.py'ı import ettiğinde
+        # app.py'ın içindeki get_api_key() tarafından kullanılacak.
+        # sync_data.py içinde geçici bir .env dosyası oluşturarak bunu sağlıyoruz.
+        # Ancak bu yöntem yerine, doğrudan veritabanındaki anahtarı kullanmak daha iyi.
+        # sync_data.py'ı veritabanındaki anahtarı okuyacak şekilde güncelledik.
+        # Bu yüzden bu env kısmı yedek olarak kalabilir, ama script içindeki mantık öncelikli.
+        # YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        PASSED: 'true' # Sadece bir env değişkeni olması için.
+
+      run: python sync_data.py
 
     - name: Commit and push if it changed
-      # Bu bölüm, veritabanı dosyasında değişiklik varsa, bunu otomatik olarak commit eder.
       run: |
         git config --global user.name 'GitHub Actions Bot'
         git config --global user.email 'actions@github.com'
         git add instance/app.db
+        # Değişiklik varsa commit at ve push'la, yoksa hiçbir şey yapma
         git diff --quiet && git diff --staged --quiet || (git commit -m "Update database with daily stats" && git push)

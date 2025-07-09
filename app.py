@@ -8,24 +8,69 @@ from datetime import date, datetime, timedelta
 from flask import Flask, jsonify, render_template, request, abort, redirect, url_for, flash, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import desc, func
+import subprocess
+import atexit
+
+# --- OTOMATİK GİT SENKRONİZASYONU ---
+def run_git_command(command):
+    """Belirtilen git komutunu proje dizininde çalıştırır ve çıktısını yazdırır."""
+    try:
+        # 'shell=True' Windows'ta komutların doğru çalışması için önemlidir.
+        # 'check=True' bir hata olursa exception fırlatmasını sağlar.
+        print(f"Running command: {command}")
+        result = subprocess.run(command, capture_output=True, text=True, check=True, shell=True)
+        if result.stdout:
+            print(f"GIT STDOUT: {result.stdout.strip()}")
+        if result.stderr:
+            print(f"GIT STDERR: {result.stderr.strip()}")
+        return True
+    except subprocess.CalledProcessError as e:
+        # Hata durumunda daha detaylı bilgi yazdır
+        print(f"GIT COMMAND FAILED: {command}")
+        print(f"GIT STDERR: {e.stderr.strip()}")
+        return False
+
+def sync_with_github():
+    """Veritabanı değişikliklerini GitHub'a push'lar."""
+    print("\n--- Shutting down: Checking for database changes to push to GitHub... ---")
+    
+    # Değişiklik olup olmadığını kontrol et
+    status_result = subprocess.run("git status --porcelain instance/app.db", capture_output=True, text=True, shell=True)
+    if not status_result.stdout:
+        print("No changes in database file. Nothing to commit.")
+        return
+
+    print("Database has changed. Committing to GitHub...")
+    run_git_command("git config --global user.name 'YT-MarketCap Bot'")
+    run_git_command("git config --global user.email 'actions@github.com'")
+    run_git_command("git add instance/app.db")
+    
+    commit_message = f"Auto-sync database changes at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    commit_command = f'git commit -m "{commit_message}"'
+    
+    # Sadece gerçekten eklenecek bir şey varsa commit at
+    if run_git_command(commit_command):
+        run_git_command("git push")
+
+# Uygulama kapanırken `sync_with_github` fonksiyonunu çalıştır
+atexit.register(sync_with_github)
+
+# Uygulama başlamadan önce `git pull` yap
+print("--- Starting up: Pulling latest changes from GitHub... ---")
+run_git_command("git pull")
 
 # --- 1. Yapılandırma ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'a-default-secret-key-for-local-dev'
-
-# SQLite veritabanı yapılandırmasına geri dönüyoruz.
-# Bu, projenin kendi içinde bir veritabanı dosyası kullanmasını sağlar.
 basedir = os.path.abspath(os.path.dirname(__file__))
 instance_path = os.path.join(basedir, 'instance')
 os.makedirs(instance_path, exist_ok=True)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(instance_path, 'app.db')
-
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/"
 
 # --- 2. Veritabanı Modelleri ---
-# Settings modeli artık API anahtarını doğrudan veritabanında tutacak
 class Settings(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True, default=1)
@@ -53,7 +98,6 @@ class ChannelStats(db.Model):
 # --- 3. Veritabanı ve İlk Kurulum ---
 @app.before_request
 def initial_setup():
-    # Bu fonksiyon, uygulama her çalıştığında veritabanı ve tabloların var olduğundan emin olur.
     with app.app_context():
         db.create_all()
         if Settings.query.first() is None:
@@ -62,7 +106,6 @@ def initial_setup():
 
 # --- 4. Yardımcı Fonksiyonlar ---
 def get_api_key():
-    # API anahtarını doğrudan veritabanından okur.
     settings = Settings.query.first()
     return settings.youtube_api_key if settings else None
 
@@ -129,8 +172,7 @@ def get_summary_and_channels_data():
     channels_db = Channel.query.all()
     channel_list = []
     summary = {
-        'total_channels': len(channels_db),
-        'total_subs_today': 0, 'total_views_today': 0, 'total_videos_today': 0,
+        'total_channels': len(channels_db), 'total_subs_today': 0, 'total_views_today': 0, 'total_videos_today': 0,
         'total_subs_yesterday': 0, 'total_views_yesterday': 0
     }
     for ch in channels_db:
@@ -144,11 +186,9 @@ def get_summary_and_channels_data():
             summary['total_subs_yesterday'] += stats_yesterday.subscriber_count
             summary['total_views_yesterday'] += stats_yesterday.view_count
         channel_list.append({
-            "id": ch.id, "name": ch.name, "image_url": ch.image_url,
-            "youtube_channel_id": ch.youtube_channel_id,
+            "id": ch.id, "name": ch.name, "image_url": ch.image_url, "youtube_channel_id": ch.youtube_channel_id,
             "subscribers": stats_today.subscriber_count if stats_today else 0,
-            "views": stats_today.view_count if stats_today else 0,
-            "videos": stats_today.video_count if stats_today else 0,
+            "views": stats_today.view_count if stats_today else 0, "videos": stats_today.video_count if stats_today else 0,
             "daily_sub_change": (stats_today.subscriber_count - stats_yesterday.subscriber_count) if stats_today and stats_yesterday else 0,
             "daily_view_change": (stats_today.view_count - stats_yesterday.view_count) if stats_today and stats_yesterday else 0,
         })
