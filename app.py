@@ -1,3 +1,5 @@
+# app.py
+
 import os
 import requests
 import subprocess
@@ -6,33 +8,48 @@ from flask import Flask, jsonify, render_template, request, abort, flash, redire
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import desc, func
 
+# --- GİT SENKRONİZASYON FONKSİYONLARI ---
 def run_git_command(command):
+    """Belirtilen git komutunu çalıştırır ve çıktısını yönetir."""
     try:
         print(f"Running command: {command}")
-        subprocess.run(command, capture_output=True, text=True, check=True, shell=True)
+        # 'shell=True' ve 'check=True' önemli
+        result = subprocess.run(command, capture_output=True, text=True, check=True, shell=True)
+        if result.stdout:
+            print(f"GIT STDOUT: {result.stdout.strip()}")
+        if result.stderr:
+            print(f"GIT STDERR: {result.stderr.strip()}")
         return True
     except subprocess.CalledProcessError as e:
         print(f"GIT COMMAND FAILED: {command}\n{e.stderr.strip()}")
         return False
 
 def sync_with_remote(pull_first=True, push_changes=False, commit_message="Sync changes from local app"):
+    """GitHub ile senkronizasyonu yönetir."""
     if pull_first:
         print("\n--- Pulling latest changes from remote... ---")
         run_git_command("git pull")
+
     if push_changes:
         print("\n--- Pushing local changes to remote... ---")
+        # Sadece instance/app.db dosyasında değişiklik var mı diye kontrol et
         status_result = subprocess.run("git status --porcelain instance/app.db", capture_output=True, text=True, shell=True)
         if not status_result.stdout:
             print("No local changes in database to push.")
             return
+
         run_git_command("git config --global user.name 'Analytica App'")
         run_git_command("git config --global user.email 'app@analytica.local'")
         run_git_command("git add instance/app.db")
+        
         if run_git_command(f'git commit -m "{commit_message}"'):
             run_git_command("git push")
 
+# --- Uygulama Başlarken Senkronizasyon ---
 sync_with_remote(pull_first=True)
 
+
+# --- 1. Flask ve SQLAlchemy Yapılandırması ---
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'a-super-secret-key-that-you-should-definitely-change'
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -43,6 +60,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3/"
 
+
+# --- 2. Veritabanı Modelleri ---
 class Settings(db.Model):
     __tablename__ = 'settings'
     id = db.Column(db.Integer, primary_key=True, default=1)
@@ -69,6 +88,8 @@ class ChannelStats(db.Model):
     view_count = db.Column(db.BigInteger, nullable=False)
     video_count = db.Column(db.Integer, nullable=False)
 
+
+# --- 3. Başlangıç ve Yardımcı Fonksiyonlar ---
 def initial_setup():
     db.create_all()
     if Settings.query.first() is None:
@@ -120,9 +141,10 @@ def format_num_short(num):
 def get_stats_at_date(channel_id, target_date):
     return ChannelStats.query.filter(ChannelStats.channel_id == channel_id, ChannelStats.date <= target_date).order_by(ChannelStats.date.desc()).first()
 
+# --- 4. Rotalar ---
 @app.route('/')
 def index(): return render_template('index.html')
-
+    
 @app.route('/channel/<int:id>')
 def channel_detail_page(id):
     channel = Channel.query.get_or_404(id)
@@ -142,6 +164,7 @@ def settings():
         return redirect(url_for('settings'))
     return render_template('settings.html', current_key=app_settings.youtube_api_key or '')
 
+# --- 5. API Rotaları ---
 @app.route('/api/dashboard_data')
 def get_dashboard_data():
     try:
@@ -149,6 +172,7 @@ def get_dashboard_data():
         period_map = {'1d': 1, '7d': 7, '30d': 30, '90d': 90, '365d': 365, 'all': -1}
         period_days = period_map.get(period, 30)
         today = date.today()
+        
         start_date_of_period = today - timedelta(days=period_days) if period != 'all' else date.min
         historical_summary_query = db.session.query(ChannelStats.date, func.sum(ChannelStats.subscriber_count).label('total_subs'), func.sum(ChannelStats.view_count).label('total_views'), func.sum(ChannelStats.video_count).label('total_videos'))
         if period != 'all':
@@ -182,8 +206,7 @@ def get_dashboard_data():
         ]
         return jsonify({"summary": summary_data, "chart_data": {'labels': [s.date.strftime('%b %d') for s in historical_summary], 'subscribers': [s.total_subs for s in historical_summary], 'views': [s.total_views for s in historical_summary]}, "channels": channels_list})
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        import traceback; traceback.print_exc()
         return jsonify({"error": "An internal server error occurred."}), 500
 
 @app.route('/api/channel_detail_data/<int:id>')
