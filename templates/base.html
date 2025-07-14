@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Analytica{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        :root, [data-bs-theme="dark"] {
+            --bg-primary: #101010; --bg-secondary: #181818; --bg-tertiary: #272727;
+            --text-primary: #f5f5f5; --text-secondary: #a3a3a3; --text-tertiary: #737373;
+            --border-primary: #262626; --accent-primary: #007aff; --accent-primary-rgb: 0, 122, 255;
+            --accent-success: #34c759; --accent-danger: #ff3b30;
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-primary); color: var(--text-primary); display: flex; -webkit-font-smoothing: antialiased; }
+        .sidebar { width: 250px; background-color: var(--bg-secondary); border-right: 1px solid var(--border-primary); padding: 1.5rem; display: flex; flex-direction: column; height: 100vh; position: fixed; left: 0; top: 0; z-index: 1001; }
+        .sidebar-header { font-weight: 700; font-size: 1.5rem; color: var(--text-primary); }
+        .nav-link { color: var(--text-secondary); padding: 0.7rem 1rem; border-radius: 8px; margin-bottom: 0.25rem; font-weight: 500; transition: all 0.2s ease; display: flex; align-items: center; text-decoration: none; }
+        .nav-link:hover { background-color: var(--bg-tertiary); color: var(--text-primary); }
+        .nav-link.active { background-color: var(--accent-primary); color: white; font-weight: 600; }
+        .sidebar-footer { margin-top: auto; padding-top: 1rem; border-top: 1px solid var(--border-primary); }
+        .main-content { margin-left: 250px; width: calc(100% - 250px); padding: 2.5rem; overflow-y: auto; height: 100vh; }
+        .custom-card { background-color: var(--bg-secondary); border: 1px solid var(--border-primary); border-radius: 12px; }
+        .btn-custom-primary { background-color: var(--accent-primary); color: white; border: none; font-weight: 600; padding: 0.6rem 1.2rem; border-radius: 8px; transition: all 0.2s ease; }
+        .btn-custom-primary:hover { background-color: #3395ff; }
+        .btn-custom-secondary { background-color: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); font-weight: 500; padding: 0.5rem 1rem; border-radius: 8px; transition: all 0.2s ease; }
+        .btn-custom-secondary:hover, .btn-custom-secondary.active { background-color: var(--bg-primary); border-color: var(--text-secondary); }
+        .btn-custom-ghost { background: transparent; border: none; color: var(--text-secondary); padding: 0.25rem 0.5rem; }
+        .btn-custom-ghost:hover { background-color: var(--bg-tertiary); }
+        .form-control, .form-select { background-color: var(--bg-primary); border: 1px solid var(--border-primary); color: var(--text-primary); padding: 0.75rem 1rem; border-radius: 8px; }
+        .form-control:focus, .form-select:focus { border-color: var(--accent-primary); box-shadow: 0 0 0 3px rgba(var(--accent-primary-rgb), 0.2); background-color: var(--bg-primary); }
+        .modal-content { background-color: var(--bg-secondary); border: 1px solid var(--border-primary); }
+        .modal-header, .modal-footer { border-color: var(--border-primary); }
+        .dropdown-menu { background-color: var(--bg-tertiary); border: 1px solid var(--border-primary); }
+        .dropdown-item:hover { background-color: var(--accent-primary); }
+        .name-and-image { transition: filter 0.2s ease-in-out; }
+        body.censor-mode .name-and-image { filter: blur(5px); user-select: none; }
+        .category-name, .category-image { display: none; }
+        body.category-mode .real-name, body.category-mode .real-image { display: none !important; }
+        body.category-mode .category-name, body.category-mode .category-image { display: inline-flex !important; }
+        .category-avatar { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: white; font-weight: 600; font-size: 1rem; }
+        .category-gaming { background-color: #6f42c1; } .category-tech { background-color: #0d6efd; }
+        .category-music { background-color: #dc3545; } .category-vlog { background-color: #fd7e14; }
+        .category-education { background-color: #198754; } .category-default { background-color: var(--text-tertiary); }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div>
+            <a href="{{ url_for('index') }}" class="sidebar-header d-flex align-items-center mb-5 text-decoration-none">
+                <i class="bi bi-bar-chart-line-fill me-2" style="color: var(--accent-primary);"></i>
+                <span>Analytica</span>
+            </a>
+            <ul class="nav flex-column">
+                <li class="nav-item"><a class="nav-link {% if request.endpoint in ['index', 'channel_detail_page'] %}active{% endif %}" href="{{ url_for('index') }}"><i class="bi bi-grid-fill me-3"></i> Dashboard</a></li>
+            </ul>
+        </div>
+        <div class="sidebar-footer">
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="censor-toggle">
+                <label class="form-check-label" for="censor-toggle">Censor Mode</label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="category-mode-toggle">
+                <label class="form-check-label" for="category-mode-toggle">Category Mode</label>
+            </div>
+            <a class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}"><i class="bi bi-gear-fill me-3"></i> Settings</a>
+        </div>
+    </aside>
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const setupToggle = (toggleId, storageKey, className) => {
+                const toggle = document.getElementById(toggleId);
+                if (!toggle) return;
+                const body = document.body;
+                const setActive = (isActive) => body.classList.toggle(className, isActive);
+                const storedState = localStorage.getItem(storageKey) === 'true';
+                toggle.checked = storedState;
+                setActive(storedState);
+                toggle.addEventListener('change', () => {
+                    const isChecked = toggle.checked;
+                    localStorage.setItem(storageKey, isChecked);
+                    setActive(isChecked);
+                });
+            };
+            setupToggle('censor-toggle', 'censorMode', 'censor-mode');
+            setupToggle('category-mode-toggle', 'categoryMode', 'category-mode');
+        });
+        const formatNumber = (num) => {
+            if (num == null || isNaN(num)) return 'N/A';
+            if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(2) + 'M';
+            if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+            return num.toLocaleString();
+        };
+        const createChart = (canvasId, chartInstance, labels, data, accentColorRgb, label) => {
+            const ctx = document.getElementById(canvasId)?.getContext('2d');
+            if (!ctx) return null;
+            if (chartInstance) chartInstance.destroy();
+            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+            gradient.addColorStop(0, `rgba(${accentColorRgb}, 0.3)`);
+            gradient.addColorStop(1, `rgba(${accentColorRgb}, 0)`);
+            return new Chart(ctx, {
+                type: 'line',
+                data: { labels, datasets: [{ label, data, borderColor: `rgba(${accentColorRgb}, 1)`, backgroundColor: gradient, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5, pointHitRadius: 20 }] },
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { border: { display: false }, grid: { color: 'var(--border-primary)', drawTicks: false }, ticks: { color: 'var(--text-tertiary)', callback: (v) => formatNumber(v) } }, x: { grid: { display: false }, ticks: { color: 'var(--text-tertiary)' } } }, plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, backgroundColor: 'var(--bg-tertiary)', titleFont: {weight: 'bold'}, bodyFont: {size: 14}, padding: 12, cornerRadius: 8 } } }
+            });
+        };
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

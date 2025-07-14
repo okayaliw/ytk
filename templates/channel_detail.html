@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% block title %}{{ channel.name }} - Analytica{% endblock %}
+
+{% block content %}
+<header class="d-flex align-items-center mb-5">
+    <a href="{{ url_for('index') }}" class="btn-custom-ghost me-3" title="Back to Dashboard"><i class="bi bi-arrow-left-circle h3"></i></a>
+    <div class="real-image"><img src="{{ channel.image_url }}" class="rounded-circle me-3 name-and-image" width="60" height="60"></div>
+    <div class="category-image"><div class="category-avatar category-{{ (channel.category or 'default').lower() }} me-3">{{ (channel.nickname or channel.name)[0] }}</div></div>
+    <div>
+        <h1 class="h2 fw-bold mb-0"><span class="real-name name-and-image">{{ channel.name }}</span><span class="category-name">{{ channel.nickname or channel.name }}</span></h1>
+        <a href="https://youtube.com/channel/{{ channel.youtube_channel_id }}" target="_blank" class="text-secondary text-decoration-none"><span class="real-name name-and-image">{{ channel.youtube_channel_id }}</span><span class="category-name">{{ channel.category or 'N/A' }}</span></a>
+    </div>
+</header>
+<div id="detail-body" style="opacity:0; transition: opacity 0.5s ease;">
+    <div class="d-flex justify-content-end align-items-center mb-4">
+        <div class="btn-group" role="group" id="period-filter">
+            <button type="button" class="btn-custom-secondary btn-sm" data-period="7d">7D</button>
+            <button type="button" class="btn-custom-secondary btn-sm active" data-period="30d">30D</button>
+            <button type="button" class="btn-custom-secondary btn-sm" data-period="90d">90D</button>
+            <button type="button" class="btn-custom-secondary btn-sm" data-period="365d">1Y</button>
+            <button type="button" class="btn-custom-secondary btn-sm" data-period="all">All</button>
+        </div>
+    </div>
+    <div class="row g-4 mb-4" id="kpi-cards"></div>
+    <div class="row g-4 mb-5">
+        <div class="col-lg-6"><div class="custom-card h-100"><div class="card-body p-4"><h5 class="fw-semibold">Subscriber History</h5><div style="height: 300px;"><canvas id="subsChart"></canvas></div></div></div></div>
+        <div class="col-lg-6"><div class="custom-card h-100"><div class="card-body p-4"><h5 class="fw-semibold">Views History</h5><div style="height: 300px;"><canvas id="viewsChart"></canvas></div></div></div></div>
+    </div>
+    <h4 class="fw-bold mb-4">Recent Videos</h4>
+    <div class="row g-4" id="recent-videos-container"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const channelId = {{ channel.id }};
+    let currentPeriod = '30d';
+    let subsChart = null, viewsChart = null;
+
+    const renderDetailPage = (data) => {
+        const { kpi, chart_data, recent_videos } = data;
+        const periodText = document.querySelector(`#period-filter .active`).textContent;
+
+        document.getElementById('kpi-cards').innerHTML = `
+            <div class="col"><div class="custom-card"><div class="card-body p-3"><h6 class="text-secondary">Total Subscribers</h6><h4 class="h3 fw-bold">${formatNumber(kpi.subs_total)}</h4></div></div></div>
+            <div class="col"><div class="custom-card"><div class="card-body p-3"><h6 class="text-secondary">Total Views</h6><h4 class="h3 fw-bold">${formatNumber(kpi.views_total)}</h4></div></div></div>
+            <div class="col"><div class="custom-card"><div class="card-body p-3"><h6 class="text-secondary">Total Videos</h6><h4 class="h3 fw-bold">${kpi.videos_total.toLocaleString()}</h4></div></div></div>
+            <div class="col"><div class="custom-card"><div class="card-body p-3"><h6 class="text-secondary">Subs Change (${periodText})</h6><h4 class="h3 fw-bold ${kpi.subs_change >= 0 ? 'text-success' : 'text-danger'}">${kpi.subs_change >= 0 ? '+' : ''}${formatNumber(kpi.subs_change)}</h4></div></div></div>
+            <div class="col"><div class="custom-card"><div class="card-body p-3"><h6 class="text-secondary">Views Change (${periodText})</h6><h4 class="h3 fw-bold ${kpi.views_change >= 0 ? 'text-success' : 'text-danger'}">${kpi.views_change >= 0 ? '+' : ''}${formatNumber(kpi.views_change)}</h4></div></div></div>
+        `;
+
+        subsChart = createChart('subsChart', subsChart, chart_data.labels, chart_data.subscribers, '0, 122, 255', 'Subscribers');
+        viewsChart = createChart('viewsChart', viewsChart, chart_data.labels, chart_data.views, '52, 199, 89', 'Views');
+
+        const videosContainer = document.getElementById('recent-videos-container');
+        videosContainer.innerHTML = recent_videos.length ? recent_videos.map(video => `
+            <div class="col-lg-4"><div class="custom-card h-100">
+                <a href="https://youtube.com/watch?v=${video.id}" target="_blank"><img src="${video.thumbnail}" class="card-img-top" style="border-top-left-radius: 12px; border-top-right-radius: 12px;"></a>
+                <div class="card-body"><h6 class="fw-semibold mb-2" style="height: 3em; overflow: hidden;">${video.title}</h6>
+                    <div class="d-flex justify-content-between text-secondary small">
+                        <span><i class="bi bi-eye"></i> ${formatNumber(video.view_count)}</span>
+                        <span><i class="bi bi-hand-thumbs-up"></i> ${formatNumber(video.like_count)}</span>
+                    </div>
+                </div>
+            </div></div>`).join('') : '<div class="col"><p class="text-secondary">No recent videos found.</p></div>';
+    };
+
+    const fetchDetailData = async () => {
+        document.getElementById('detail-body').style.opacity = '0.5';
+        try {
+            const response = await fetch(`/api/channel_detail_data/${channelId}?period=${currentPeriod}`);
+            if (!response.ok) throw new Error('API request failed.');
+            const data = await response.json();
+            renderDetailPage(data);
+        } catch (error) {
+            document.getElementById('detail-body').innerHTML = `<div class="alert alert-danger">${error.message}</div>`;
+        } finally {
+            document.getElementById('detail-body').style.opacity = '1';
+        }
+    };
+    
+    document.getElementById('period-filter').addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON' && !e.target.classList.contains('active')) {
+            document.querySelector('#period-filter .active')?.classList.remove('active');
+            e.target.classList.add('active');
+            currentPeriod = e.target.dataset.period;
+            fetchDetailData();
+        }
+    });
+
+    fetchDetailData();
+});
+</script>
+{% endblock %}

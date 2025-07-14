@@ -1,0 +1,39 @@
+# .github/workflows/sync.yml
+
+name: Daily Data Sync
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # Her gün UTC 03:00'de
+  workflow_dispatch:
+
+jobs:
+  sync-and-commit:
+    runs-on: ubuntu-latest
+    
+    # Bota repoya yazma izni ver
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run data sync script
+      run: python sync_data.py
+
+    - name: Commit and push if database changed
+      run: |
+        git config --global user.name 'Analytica Bot'
+        git config --global user.email 'bot@analytica.local'
+        git add instance/app.db
+        # Sadece değişiklik varsa commit at ve push'la
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Update database with daily stats" && git push)
